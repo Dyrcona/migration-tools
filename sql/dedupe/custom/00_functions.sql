@@ -1814,9 +1814,9 @@ DECLARE
 BEGIN
     SELECT EXISTS (SELECT 1 FROM dedupe_features WHERE name = 'dedupe_type' AND value IN ('subset','migration')) 
         INTO migration;
-    SELECT SUM(ARRAY_LENGTH(records,1)) FROM groups INTO subordinates;
+    SELECT COUNT(*) FROM m_biblio_record_entry_legacy WHERE x_merge_to IS NOT NULL INTO subordinates;
     IF migration = true THEN 
-        SELECT COUNT(*) FROM m_biblio_record_entry_legacy WHERE x_migrate INTO pool;
+        SELECT COUNT(*) FROM m_biblio_record_entry_legacy INTO pool;
     ELSE 
         SELECT COUNT(*) FROM biblio.record_entry WHERE NOT deleted INTO pool;
     END IF;
@@ -1837,3 +1837,40 @@ BEGIN
     RETURN str;
 END;
 $function$;
+
+CREATE FUNCTION clean_author_elements(in_array TEXT[]) 
+ RETURNS TEXT[] AS $$
+DECLARE
+    element TEXT;
+    out_array TEXT[] := '{}'; 
+BEGIN
+    FOREACH element IN ARRAY in_array LOOP
+        out_array := array_append(out_array, clean_author(element));
+    END LOOP;
+     RETURN out_array;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP FUNCTION IF EXISTS determine_author_array_match(ANYARRAY,ANYARRAY);
+CREATE OR REPLACE FUNCTION determine_author_array_match(arr1 ANYARRAY, arr2 ANYARRAY)
+  RETURNS BOOLEAN AS $$ 
+DECLARE 
+    arr1_length     INTEGER;
+    arr2_length     INTEGER;
+    matching_count  INTEGER;
+    count_target    INTEGER;
+    result          BOOLEAN DEFAULT FALSE;
+BEGIN
+    SELECT ARRAY_LENGTH(arr1,1) INTO arr1_length;
+    SELECT ARRAY_LENGTH(arr2,1) INTO arr2_length;
+    SELECT CASE WHEN arr1_length > arr2_length THEN arr1_length ELSE arr2_length END INTO count_target ;
+    SELECT CEIL(count_target / 2.0) INTO count_target ;
+    SELECT COUNT(DISTINCT a.element)
+      FROM UNNEST(arr1) AS a(element)
+      JOIN UNNEST(arr2) AS b(element) ON a.element = b.element
+      INTO matching_count ;
+    IF matching_count > count_target THEN result = TRUE; END IF;
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql;
+

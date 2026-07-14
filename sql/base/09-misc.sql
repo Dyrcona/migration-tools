@@ -128,3 +128,11 @@ BEGIN
     RETURN 'success';
 END
 $function$;
+
+CREATE OR REPLACE FUNCTION migration_tools.concat_ws_unique(sep text, VARIADIC elements text[])
+RETURNS text AS $$
+  SELECT string_agg(DISTINCT val, sep)
+  FROM unnest(elements) AS val
+  WHERE btrim(val) <> '';
+$$ LANGUAGE sql IMMUTABLE;
+
